@@ -11,7 +11,8 @@ There is no optimization on the algorithm.
 The dataset will be downloaded while building, so you just need:
 
 1. Build it with `make`
-2. Run it: `./knn 10 3`
+2. Now if there is no error, you will get a huge binary executable file (~55MB) with the dataset embedding in.
+3. Run it: `./knn 10 3`
 
 ## Debug
 
