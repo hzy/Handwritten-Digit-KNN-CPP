@@ -1,5 +1,5 @@
 CXX=g++
-CXXFLAGS=-std=c++11 -Wall -Werror -Iinclude
+CXXFLAGS=-std=c++11 -Wall -Werror -Iinclude -lpthread
 DATASET=mnist/train-images-idx3-ubyte mnist/train-labels-idx1-ubyte mnist/t10k-images-idx3-ubyte mnist/t10k-labels-idx1-ubyte
 
 knn: $(DATASET) src/main.cc

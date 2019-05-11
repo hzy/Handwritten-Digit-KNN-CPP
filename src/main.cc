@@ -109,12 +109,12 @@ void worker(const u_int8_t *base, int start, int count, int k, int p)
         base += image_size;
     }
 
-    {
-        std::lock_guard<std::mutex> guard_all(all_count_mutex);
-        std::lock_guard<std::mutex> guard_wrong(wrong_count_mutex);
-        all_count += local_all_count;
-        wrong_count += local_wrong_count;
-    }
+    std::lock_guard<std::mutex> guard_all(all_count_mutex);
+    std::lock_guard<std::mutex> guard_wrong(wrong_count_mutex);
+    all_count += local_all_count;
+    wrong_count += local_wrong_count;
+
+    printf("A worker is ended!\n");
 }
 
 int main(int argc, char **argv)
@@ -146,7 +146,10 @@ int main(int argc, char **argv)
         threads[i] = new std::thread(worker, test_images_bin_start, i * load_per_cpu, (int)load_per_cpu, atoi(argv[1]), atoi(argv[2]));
 
     for (unsigned int i = 0; i < cpu_number; i++)
+    {
         threads[i]->join();
+        delete threads[i];
+    }
 
     std::cout << wrong_count << " / " << all_count << std::endl;
     std::cout << "acc: " << 100 - wrong_count / (all_count + 0.0) * 100 << '%' << std::endl;
