@@ -135,8 +135,8 @@ int main(int argc, char **argv)
     }
 #endif
 
-    std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
     std::cout << "number_of_train_images: " << number_of_train_images << std::endl;
+    std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
 
     unsigned int cpu_number = std::thread::hardware_concurrency();
     unsigned int load_per_cpu = number_of_test_images / cpu_number;
