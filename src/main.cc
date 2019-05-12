@@ -27,14 +27,9 @@ constexpr int image_size = number_of_rows * number_of_columns * sizeof(u_int8_t)
 int number_of_train_images = 0;
 int number_of_test_images = 0;
 #else
-int number_of_train_images = (g_train_images_end - train_images_bin_start) / image_size;
-int number_of_test_images = (g_test_images_end - test_images_bin_start) / image_size;
+const int number_of_train_images = (g_train_images_end - train_images_bin_start) / image_size;
+const int number_of_test_images = (g_test_images_end - test_images_bin_start) / image_size;
 #endif
-
-int wrong_count = 0;
-int all_count = 0;
-std::mutex wrong_count_mutex;
-std::mutex all_count_mutex;
 
 struct distance : std::pair<u_int8_t, double>
 {
@@ -48,6 +43,23 @@ struct distance : std::pair<u_int8_t, double>
         out << "label: " << (char)(c.first + '0') << ", "
             << "distance: " << c.second;
         return out;
+    }
+};
+
+struct counter
+{
+    std::mutex mutex;
+    int value;
+    counter() : value(0) {}
+    void increment(int inc)
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        value += inc;
+    }
+    void reset()
+    {
+        std::lock_guard<std::mutex> guard(mutex);
+        value = 0;
     }
 };
 
@@ -75,7 +87,7 @@ u_int8_t predict(const u_int8_t *test_image, int k, int p)
 
     std::sort(distances.begin(), distances.end());
 
-    std::vector<int> top_k(k);
+    std::vector<int> top_k(10, 0);
     for (int i = 0; i < k; i++)
         top_k[distances[i].first]++;
 
@@ -87,39 +99,42 @@ u_int8_t predict(const u_int8_t *test_image, int k, int p)
     return result;
 }
 
-void worker(const u_int8_t *base, int start, int count, int k, int p)
-{
-    int local_wrong_count = 0;
-    int local_all_count = 0;
-
-    base += image_size * start;
-    for (int i = 0; i < count; i++)
-    {
-        u_int8_t result = predict(base, k, p);
-        u_int8_t right = test_labels_bin_start[start + i];
-
-        local_all_count++;
-
-        if (result != right)
-            local_wrong_count++;
-
-        base += image_size;
-    }
-
-    std::lock_guard<std::mutex> guard_all(all_count_mutex);
-    std::lock_guard<std::mutex> guard_wrong(wrong_count_mutex);
-    all_count += local_all_count;
-    wrong_count += local_wrong_count;
-}
-
 double run(int k, int p)
 {
+    counter wrong_count;
+    counter all_count;
+
     unsigned int cpu_number = std::thread::hardware_concurrency();
     unsigned int load_per_cpu = number_of_test_images / cpu_number;
 
-    std::vector<std::thread *> threads(cpu_number);
+    std::vector<std::thread *> threads;
     for (unsigned int i = 0; i < cpu_number; i++)
-        threads[i] = new std::thread(worker, test_images_bin_start, i * load_per_cpu, (int)load_per_cpu, k, p);
+        threads.push_back(new std::thread(
+            [&wrong_count, &all_count](const u_int8_t *base, int start, int count, int k, int p) -> void {
+                int local_wrong_count = 0;
+                int local_all_count = 0;
+
+                base += image_size * start;
+                for (int i = 0; i < count; i++)
+                {
+                    u_int8_t result = predict(base, k, p);
+                    u_int8_t right = test_labels_bin_start[start + i];
+
+                    local_all_count++;
+                    if (result != right)
+                        local_wrong_count++;
+
+                    base += image_size;
+                }
+
+                wrong_count.increment(local_wrong_count);
+                all_count.increment(local_all_count);
+            },
+            test_images_bin_start,
+            i *load_per_cpu,
+            (int)load_per_cpu,
+            k,
+            p));
 
     for (unsigned int i = 0; i < cpu_number; i++)
     {
@@ -127,9 +142,7 @@ double run(int k, int p)
         delete threads[i];
     }
 
-    // std::cout << wrong_count << " / " << all_count << std::endl;
-    // std::cout << "acc: " << 100 - wrong_count / (all_count +0.0) * 100 << '%' << std::endl;
-    return 100 - wrong_count / (all_count + 0.0) * 100;
+    return 100 - wrong_count.value / (all_count.value + 0.0) * 100;
 }
 
 int main(int argc, char **argv)
@@ -150,13 +163,24 @@ int main(int argc, char **argv)
     }
 #endif
 
-    // std::cout << "number_of_train_images: " << number_of_train_images << std::endl;
-    // std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
+    std::cout << "number_of_train_images: " << number_of_train_images << std::endl;
+    std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
 
+    // std::vector<int> P = {3};
+    std::vector<int> P = {2, 3, 4};
+    // std::vector<int> K = {10};
     std::vector<int> K = {8, 9, 10, 11, 12};
-    std::vector<int> P = {1, 2, 3, 4, 5};
+
+    printf("       ");
+    for (auto p : P)
+        printf("     p = %d", p);
+    printf("\n");
 
     for (auto k : K)
+    {
+        printf("k = %2d ", k);
         for (auto p : P)
-            printf("k = %2d, p = %d, acc = %lf%%\n", k, p, run(k, p));
+            printf("%10lf", run(k, p));
+        printf("\n");
+    }
 }
