@@ -89,7 +89,6 @@ u_int8_t predict(const u_int8_t *test_image, int k, int p)
 
 void worker(const u_int8_t *base, int start, int count, int k, int p)
 {
-    printf("A worker is started!\n");
     int local_wrong_count = 0;
     int local_all_count = 0;
 
@@ -111,8 +110,26 @@ void worker(const u_int8_t *base, int start, int count, int k, int p)
     std::lock_guard<std::mutex> guard_wrong(wrong_count_mutex);
     all_count += local_all_count;
     wrong_count += local_wrong_count;
+}
 
-    printf("A worker is ended!\n");
+double run(int k, int p)
+{
+    unsigned int cpu_number = std::thread::hardware_concurrency();
+    unsigned int load_per_cpu = number_of_test_images / cpu_number;
+
+    std::vector<std::thread *> threads(cpu_number);
+    for (unsigned int i = 0; i < cpu_number; i++)
+        threads[i] = new std::thread(worker, test_images_bin_start, i * load_per_cpu, (int)load_per_cpu, k, p);
+
+    for (unsigned int i = 0; i < cpu_number; i++)
+    {
+        threads[i]->join();
+        delete threads[i];
+    }
+
+    // std::cout << wrong_count << " / " << all_count << std::endl;
+    // std::cout << "acc: " << 100 - wrong_count / (all_count +0.0) * 100 << '%' << std::endl;
+    return 100 - wrong_count / (all_count + 0.0) * 100;
 }
 
 int main(int argc, char **argv)
@@ -133,22 +150,13 @@ int main(int argc, char **argv)
     }
 #endif
 
-    std::cout << "number_of_train_images: " << number_of_train_images << std::endl;
-    std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
+    // std::cout << "number_of_train_images: " << number_of_train_images << std::endl;
+    // std::cout << "number_of_test_images: " << number_of_test_images << std::endl;
 
-    unsigned int cpu_number = std::thread::hardware_concurrency();
-    unsigned int load_per_cpu = number_of_test_images / cpu_number;
+    std::vector<int> K = {8, 9, 10, 11, 12};
+    std::vector<int> P = {1, 2, 3, 4, 5};
 
-    std::vector<std::thread *> threads(cpu_number);
-    for (unsigned int i = 0; i < cpu_number; i++)
-        threads[i] = new std::thread(worker, test_images_bin_start, i * load_per_cpu, (int)load_per_cpu, atoi(argv[1]), atoi(argv[2]));
-
-    for (unsigned int i = 0; i < cpu_number; i++)
-    {
-        threads[i]->join();
-        delete threads[i];
-    }
-
-    std::cout << wrong_count << " / " << all_count << std::endl;
-    std::cout << "acc: " << 100 - wrong_count / (all_count + 0.0) * 100 << '%' << std::endl;
+    for (auto k : K)
+        for (auto p : P)
+            printf("k = %2d, p = %d, acc = %lf%%\n", k, p, run(k, p));
 }
