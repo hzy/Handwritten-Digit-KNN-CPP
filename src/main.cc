@@ -7,7 +7,7 @@
 #include <mutex>
 
 #define INCBIN_STYLE INCBIN_STYLE_SNAKE
-#include "incbin.h"
+#include "../include/incbin.h"
 
 INCBIN(_train_images, "mnist/train-images-idx3-ubyte");
 INCBIN(_test_images, "mnist/t10k-images-idx3-ubyte");
@@ -23,7 +23,7 @@ constexpr int number_of_rows = 28;
 constexpr int number_of_columns = 28;
 constexpr int image_size = number_of_rows * number_of_columns * sizeof(u_int8_t);
 
-#ifdef DEBUG
+#ifdef KNN_DEBUG
 int number_of_train_images = 0;
 int number_of_test_images = 0;
 #else
@@ -51,24 +51,23 @@ struct distance : std::pair<u_int8_t, double>
     }
 };
 
-double minkowski_distance(std::vector<uint8_t> a, std::vector<uint8_t> b, int p)
+double minkowski_distance(const u_int8_t *a, const u_int8_t *b, int l, int p)
 {
     double sum = 0;
-    for (int i = 0, l = std::min(a.size(), b.size()); i < l; i++)
+    for (int i = 0; i < l; i++)
         sum += std::pow(std::abs(a[i] - b[i]), p);
 
     return std::pow(sum, 1 / (p + 0.0));
 }
 
-u_int8_t predict(std::vector<u_int8_t> test_image, int k, int p)
+u_int8_t predict(const u_int8_t *test_image, int k, int p)
 {
     std::vector<distance> distances(number_of_train_images);
     const u_int8_t *base = train_images_bin_start;
 
     for (int i = 0; i < number_of_train_images; i++)
     {
-        std::vector<u_int8_t> train_image(base, base + image_size);
-        double d = minkowski_distance(train_image, test_image, p);
+        double d = minkowski_distance(base, test_image, image_size, p);
         distances[i] = {train_labels_bin_start[i], d};
 
         base += image_size;
@@ -97,8 +96,7 @@ void worker(const u_int8_t *base, int start, int count, int k, int p)
     base += image_size * start;
     for (int i = 0; i < count; i++)
     {
-        std::vector<u_int8_t> test_image(base, base + image_size);
-        u_int8_t result = predict(test_image, k, p);
+        u_int8_t result = predict(base, k, p);
         u_int8_t right = test_labels_bin_start[start + i];
 
         local_all_count++;
@@ -119,7 +117,7 @@ void worker(const u_int8_t *base, int start, int count, int k, int p)
 
 int main(int argc, char **argv)
 {
-#ifdef DEBUG
+#ifdef KNN_DEBUG
     if (argc != 5)
     {
         std::cout << "Debug Usage: " << argv[0] << " K P TrainImageNum TestImageNum" << std::endl;
